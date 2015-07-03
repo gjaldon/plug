@@ -109,6 +109,15 @@ defmodule Plug.CSRFProtection do
     Process.delete(:plug_masked_csrf_token)
   end
 
+  @doc """
+  Skips csrf protection.
+
+  This will force the token to be deleted once the response is sent.
+  """
+  def skip_csrf_protection do
+    Process.put(:plug_skip_csrf_protection, true)
+  end
+
   ## Plug
 
   @behaviour Plug
@@ -146,10 +155,11 @@ defmodule Plug.CSRFProtection do
   end
 
   defp verified_request?(conn, csrf_token) do
+    IO.inspect(conn.method in @unprotected_methods)
     conn.method in @unprotected_methods
       || valid_csrf_token?(csrf_token, conn.params["_csrf_token"])
       || valid_csrf_token?(csrf_token, get_req_header(conn, "x-csrf-token") |> List.first)
-      || skip_csrf_protection?(conn)
+      || skip_csrf_protection?()
   end
 
   defp valid_csrf_token?(<<csrf_token::@encoded_token_size-binary>>,
@@ -173,7 +183,7 @@ defmodule Plug.CSRFProtection do
   end
 
   defp cross_origin_js?(%Plug.Conn{method: "GET"} = conn),
-    do: not skip_csrf_protection?(conn) and not xhr?(conn) and js_content_type?(conn)
+    do: not skip_csrf_protection?() and not xhr?(conn) and js_content_type?(conn)
   defp cross_origin_js?(%Plug.Conn{}),
     do: false
 
@@ -197,8 +207,7 @@ defmodule Plug.CSRFProtection do
 
   ## Helpers
 
-  defp skip_csrf_protection?(%Plug.Conn{private: %{plug_skip_csrf_protection: true}}), do: true
-  defp skip_csrf_protection?(%Plug.Conn{}), do: false
+  defp skip_csrf_protection?, do: !!Process.delete(:plug_skip_csrf_protection)
 
   defp mask(token) do
     mask = generate_token()
